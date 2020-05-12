@@ -18,6 +18,7 @@ class NeuralNetwork(object):
                 continue
             else:
                 params[f'W{layer-1}'] = np.random.randn(neurons, self.sizes[layer-1]) * np.sqrt(1 / neurons)
+                params[f'B{layer-1}'] = np.zeros((neurons, 1)) + 0.01
 
         return params
 
@@ -30,7 +31,7 @@ class NeuralNetwork(object):
             if layer == 0:
                 continue
             else:
-                params[f'Z{layer-1}'] = params[f'W{layer-1}'] @ params[f'A{layer-1}']
+                params[f'Z{layer-1}'] = params[f'W{layer-1}'] @ params[f'A{layer-1}'] + params[f'B{layer-1}']
                 params[f'A{layer}'] = self.activation(params[f'Z{layer-1}'], func=a_func)
 
         return params[f'A{layer}']
@@ -38,7 +39,7 @@ class NeuralNetwork(object):
     def backprop(self, prediction, actual, a_func='sigmoid'):
 
         params = self.params
-        weight_changes = {}
+        wb_changes = {}
         deltas = [0 for _ in range(self.layers-1)]
         cost = prediction - actual
         deltas[-1] = (cost * self.activation(params[f'Z{self.layers-2}'], func=a_func, derivative=True))
@@ -46,13 +47,15 @@ class NeuralNetwork(object):
         l_layer = self.layers - 2
         for layer in range(self.layers - 1):
             if layer == 0:
-                weight_changes[f'W{l_layer-layer}'] = deltas[l_layer-layer] @ params[f'A{l_layer-layer}'].T
+                wb_changes[f'W{l_layer-layer}'] = deltas[l_layer-layer] @ params[f'A{l_layer-layer}'].T
+                wb_changes[f'B{l_layer-layer}'] = deltas[l_layer-layer]
             else:
                 new_delt = (params[f'W{l_layer-layer+1}'].T @ deltas[l_layer-layer+1])
                 deltas[l_layer-layer] = new_delt * self.activation(params[f'Z{l_layer-layer}'], func=a_func, derivative=True)
-                weight_changes[f'W{l_layer-layer}'] = deltas[l_layer-layer] @ params[f'A{l_layer-layer}'].T
+                wb_changes[f'W{l_layer-layer}'] = deltas[l_layer-layer] @ params[f'A{l_layer-layer}'].T
+                wb_changes[f'B{l_layer-layer}'] = deltas[l_layer-layer]
 
-        return weight_changes
+        return wb_changes
 
     @staticmethod
     def activation(val, func='sigmoid', derivative=False):
@@ -68,9 +71,9 @@ class NeuralNetwork(object):
             else:
                 return np.array([max(0, i[0]) for i in val]).reshape(-1, 1)
 
-    def update_weights(self, weight_changes):
+    def update_weights(self, weight_bias_changes):
 
-        for layer, values in weight_changes.items():
+        for layer, values in weight_bias_changes.items():
             self.params[layer] -= (self.l_rate * values)
 
 

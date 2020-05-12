@@ -5,7 +5,7 @@ import time
 from utils.nn import NeuralNetwork
 
 
-epochs = 10
+epochs = 5
 
 nn = NeuralNetwork([784, 128, 64, 10])
 
@@ -14,7 +14,7 @@ for i in range(epochs):
     preds = []
     trues = []
     accuracy = []
-    with open("../../Documents/Kaggle/digit_recognizer/train.csv") as train:
+    with open("../../Kaggle/digit_recognizer/train.csv") as train:
         reader = csv.reader(train)
         heading = next(reader)
 

@@ -31,7 +31,7 @@ for i in range(epochs):
             preds.append(np.argmax(prediction))
             trues.append(actual_idx)
             changes = nn.backprop(prediction, y, a_func='relu')
-            nn.update_weights(changes)
+            nn._update_weights(changes, updater='sgd', momentum=False)
 
     for pred, true in zip(preds, trues):
         accuracy.append(pred == true)

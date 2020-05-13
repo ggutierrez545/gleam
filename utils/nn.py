@@ -3,10 +3,14 @@ import numpy as np
 
 class NeuralNetwork(object):
 
-    def __init__(self, sizes, l_rate=0.01):
+    def __init__(self, sizes, l_rate=0.01, m_factor=0.25):
         self.sizes = sizes
         self.layers = len(sizes)
         self.l_rate = l_rate
+        self.m_factor = m_factor
+        self.forward_passes = 0
+        self.prev_update = {}
+        self.batch_retention = {}
 
         self.params = self._initialization()
 
@@ -19,10 +23,14 @@ class NeuralNetwork(object):
             else:
                 params[f'W{layer-1}'] = np.random.randn(neurons, self.sizes[layer-1]) * np.sqrt(1 / neurons)
                 params[f'B{layer-1}'] = np.zeros((neurons, 1)) + 0.01
+                self.prev_update[f'W{layer-1}'] = 0
+                self.prev_update[f'B{layer-1}'] = 0
 
         return params
 
     def feedforward(self, input_layer, a_func='sigmoid'):
+
+        self.forward_passes += 1
         params = self.params
 
         params['A0'] = input_layer
@@ -65,15 +73,38 @@ class NeuralNetwork(object):
                 return (np.exp(-val)) / ((1 + np.exp(-val)) ** 2)
             else:
                 return 1 / (1 + np.exp(-val))
+
         elif func == 'relu':
             if derivative:
                 return np.array([1.0 if i > 0.0 else 0.0 for i in val]).reshape(-1, 1)
             else:
                 return np.array([max(0, i[0]) for i in val]).reshape(-1, 1)
 
-    def update_weights(self, weight_bias_changes):
+    def _update_weights(self, weight_bias_changes, updater='sgd', batch_size=50, momentum=True):
 
-        for layer, values in weight_bias_changes.items():
-            self.params[layer] -= (self.l_rate * values)
+        if updater == 'sgd':
+
+            for layer, values in weight_bias_changes.items():
+                update = (self.l_rate * values)
+                self.params[layer] -= update + (self.m_factor * self.prev_update[layer])
+                if momentum:
+                    self.prev_update[layer] = update
+
+        elif updater == 'mini_batch':
+
+            if self.forward_passes % batch_size != 0:
+                for layer, values in weight_bias_changes.items():
+                    try:
+                        self.batch_retention[layer] += values
+                    except KeyError:
+                        self.batch_retention[layer] = values
+
+            else:
+                for layer, values in self.batch_retention.items():
+                    update = (self.l_rate * (values/batch_size))
+                    self.params[layer] -= update + (self.m_factor * self.prev_update[layer])
+                    if momentum:
+                        self.prev_update[layer] = update
+                self.batch_retention = weight_bias_changes
 
 

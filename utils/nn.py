@@ -107,4 +107,8 @@ class NeuralNetwork(object):
                         self.prev_update[layer] = -update
                 self.batch_retention = weight_bias_changes
 
+        else:
+
+            raise KeyError(f"Unrecognized updater: {updater}")
+
 

@@ -5,7 +5,7 @@ import time
 from utils.nn import NeuralNetwork
 
 
-epochs = 5
+epochs = 10
 
 nn = NeuralNetwork([784, 128, 64, 10])
 
@@ -31,7 +31,7 @@ for i in range(epochs):
             preds.append(np.argmax(prediction))
             trues.append(actual_idx)
             changes = nn.backprop(prediction, y, a_func='relu')
-            nn._update_weights(changes, updater='sgd', momentum=False)
+            nn._update_weights(changes, updater='sgd', momentum=True)
 
     for pred, true in zip(preds, trues):
         accuracy.append(pred == true)
@@ -41,7 +41,7 @@ for i in range(epochs):
 
 ids = []
 guess = []
-with open('../../Documents/Kaggle/digit_recognizer/test.csv') as test:
+with open('../../Kaggle/digit_recognizer/test.csv') as test:
     reader = csv.reader(test)
     header = next(reader)
     for i, row in enumerate(reader):
@@ -57,5 +57,5 @@ moo = pd.DataFrame()
 moo['ImageId'] = ids
 moo['Label'] = guess
 
-moo.to_csv("../../Documents/Kaggle/digit_recognizer/submit.csv", index=False)
+moo.to_csv("../../Kaggle/digit_recognizer/submit.csv", index=False)
 

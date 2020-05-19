@@ -3,7 +3,7 @@ import numpy as np
 
 class NeuralNetwork(object):
 
-    def __init__(self, sizes, l_rate=0.01, m_factor=0.25):
+    def __init__(self, sizes, l_rate=0.01, m_factor=0.9):
         self.sizes = sizes
         self.layers = len(sizes)
         self.l_rate = l_rate
@@ -85,10 +85,10 @@ class NeuralNetwork(object):
         if updater == 'sgd':
 
             for layer, values in weight_bias_changes.items():
-                update = (self.l_rate * values)
-                self.params[layer] -= update + (self.m_factor * self.prev_update[layer])
+                update = (self.l_rate * values) + (self.m_factor * self.prev_update[layer])
+                self.params[layer] -= update
                 if momentum:
-                    self.prev_update[layer] = update
+                    self.prev_update[layer] = -update
 
         elif updater == 'mini_batch':
 
@@ -101,10 +101,10 @@ class NeuralNetwork(object):
 
             else:
                 for layer, values in self.batch_retention.items():
-                    update = (self.l_rate * (values/batch_size))
-                    self.params[layer] -= update + (self.m_factor * self.prev_update[layer])
+                    update = (self.l_rate * (values/batch_size)) + (self.m_factor * self.prev_update[layer])
+                    self.params[layer] -= update
                     if momentum:
-                        self.prev_update[layer] = update
+                        self.prev_update[layer] = -update
                 self.batch_retention = weight_bias_changes
 
 

@@ -17,14 +17,11 @@ class NeuralNetwork(object):
     def _initialization(self):
 
         params = {}
-        for layer, neurons in enumerate(self.sizes):
-            if layer == 0:
-                continue
-            else:
-                params[f'W{layer-1}'] = np.random.randn(neurons, self.sizes[layer-1]) * np.sqrt(1 / neurons)
-                params[f'B{layer-1}'] = np.zeros((neurons, 1)) + 0.01
-                self.prev_update[f'W{layer-1}'] = 0
-                self.prev_update[f'B{layer-1}'] = 0
+        for layer, neurons in enumerate(self.sizes[1:]):
+            params[f'W{layer}'] = np.random.randn(neurons, self.sizes[layer]) * np.sqrt(1 / neurons)
+            params[f'B{layer}'] = np.zeros((neurons, 1)) + 0.01
+            self.prev_update[f'W{layer}'] = 0
+            self.prev_update[f'B{layer}'] = 0
 
         return params
 
@@ -110,5 +107,65 @@ class NeuralNetwork(object):
         else:
 
             raise KeyError(f"Unrecognized updater: {updater}")
+
+
+class ConvNeuralNetwork(NeuralNetwork):
+
+    def __init__(self, sizes, l_rate=0.01, m_factor=0.9):
+
+        super().__init__(sizes, l_rate, m_factor)
+        self.kernals = {}
+
+    def _add_convolution_layer(self, number_filters, filter_size):
+
+        if type(number_filters) != list:
+            self.kernals[f'K{len(self.kernals)}'] = np.random.randn(number_filters, filter_size, filter_size) * np.sqrt(1 / filter_size)
+
+        else:
+            for num_filters, size in zip(number_filters, filter_size):
+                self.kernals[f'K{len(self.kernals)}'] = np.random.randn(num_filters, size, size) * np.sqrt(1 / size)
+
+    def _convolve_image(self, image, padding='valid'):
+
+        if padding == 'valid':
+
+            # initialize img variable with original image
+            img = image
+
+            for layer, filters_array in self.kernals.items():
+                filters, _, f_size = filters_array.shape
+                h, w = img.shape
+                horiz_segs = (w - f_size) + 1
+                vert_segs = (h - f_size) + 1
+                last_v = 0
+                for v_layer, img_seg in self._segment_image(img, f_size, vert_segs, horiz_segs):
+                    if v_layer != last_v:
+                        try:
+                            new_img = np.hstack((new_img, temp))
+                            del temp
+                        except NameError:
+                            new_img = temp
+                    try:
+                        temp = np.dstack((temp, np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape(filters, 1, 1)))
+                    except NameError:
+                        temp = np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape(filters, 1, 1)
+                    last_v = v_layer
+                # update
+                img = new_img
+                # TODO: Figure out convolution layers that come after first one
+    @staticmethod
+    def _segment_image(image, segment_size, v_segs, h_segs):
+
+        if len(image.shape) == 2:
+            image = [image]
+
+        for feature_map in image:
+            for i in range(v_segs):
+                for j in range(h_segs):
+                    rows = i + segment_size
+                    cols = j + segment_size
+                    yield i, feature_map[i:rows, j:cols]
+
+
 
 

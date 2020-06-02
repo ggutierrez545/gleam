@@ -5,7 +5,7 @@ import time
 from utils.nn import NeuralNetwork
 
 
-epochs = 10
+epochs = 5
 
 nn = NeuralNetwork([784, 128, 64, 10])
 
@@ -31,7 +31,7 @@ for i in range(epochs):
             preds.append(np.argmax(prediction))
             trues.append(actual_idx)
             changes = nn.backprop(prediction, y, a_func='relu')
-            nn._update_weights(changes, updater='sgd', momentum=True)
+            nn._update_weights(changes, updater='mini_batch')
 
     for pred, true in zip(preds, trues):
         accuracy.append(pred == true)

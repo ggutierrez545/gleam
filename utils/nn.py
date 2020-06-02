@@ -153,18 +153,19 @@ class ConvNeuralNetwork(NeuralNetwork):
                 # update
                 img = new_img
                 # TODO: Figure out convolution layers that come after first one
-    @staticmethod
-    def _segment_image(image, segment_size, v_segs, h_segs):
+
+    def _segment_image(self, image, segment_size, v_segs, h_segs):
 
         if len(image.shape) == 2:
-            image = [image]
-
-        for feature_map in image:
             for i in range(v_segs):
                 for j in range(h_segs):
                     rows = i + segment_size
                     cols = j + segment_size
-                    yield i, feature_map[i:rows, j:cols]
+                    yield i, image[i:rows, j:cols]
+
+        else:
+            for sub_image in image:
+                self._segment_image(sub_image, segment_size, v_segs, h_segs)
 
 
 

@@ -115,6 +115,7 @@ class ConvNeuralNetwork(NeuralNetwork):
 
         super().__init__(sizes, l_rate, m_factor)
         self.kernals = {}
+        self.image = []
 
     def _add_convolution_layer(self, number_filters, filter_size):
 
@@ -134,38 +135,73 @@ class ConvNeuralNetwork(NeuralNetwork):
 
             for layer, filters_array in self.kernals.items():
                 filters, _, f_size = filters_array.shape
-                h, w = img.shape
+                try:
+                    h, w = img.shape
+                except ValueError:
+                    _, h, w = img.shape
                 horiz_segs = (w - f_size) + 1
                 vert_segs = (h - f_size) + 1
                 last_v = 0
+                depth_tracker = 0
+                max_depth = horiz_segs * vert_segs
                 for v_layer, img_seg in self._segment_image(img, f_size, vert_segs, horiz_segs):
+                    depth_tracker += 1
                     if v_layer != last_v:
                         try:
+                            self.image = [new_img.shape, temp.shape]
                             new_img = np.hstack((new_img, temp))
                             del temp
                         except NameError:
                             new_img = temp
+                            del temp
                     try:
-                        temp = np.dstack((temp, np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape(filters, 1, 1)))
+                        if len(img_seg.shape) == 3:
+                            tmp_check = temp.copy()
+                            del tmp_check
+                            for seg in img_seg:
+                                try:
+                                    next_layer = np.vstack((next_layer, np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))))
+                                except NameError:
+                                    next_layer = np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))
+                            self.image = [temp.shape, next_layer.shape]
+                            temp = np.dstack((temp, next_layer))
+                            del next_layer
+                        else:
+                            temp = np.dstack((temp, np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape((filters, 1, 1))))
                     except NameError:
-                        temp = np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape(filters, 1, 1)
+                        if len(img_seg.shape) == 3:
+                            for seg in img_seg:
+                                try:
+                                    temp = np.vstack((temp, np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))))
+                                except NameError:
+                                    temp = np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))
+                        else:
+                            temp = np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape((filters, 1, 1))
                     last_v = v_layer
-                # update
+                    if depth_tracker == max_depth:
+                        new_img = np.hstack((new_img, temp))
+                # update the image with the new set of images
                 img = new_img
-                # TODO: Figure out convolution layers that come after first one
+                del new_img
+                del temp
+                try:
+                    del next_layer
+                except UnboundLocalError:
+                    pass
+            return img
 
-    def _segment_image(self, image, segment_size, v_segs, h_segs):
+    @staticmethod
+    def _segment_image(image, segment_size, v_segs, h_segs):
 
-        if len(image.shape) == 2:
-            for i in range(v_segs):
-                for j in range(h_segs):
-                    rows = i + segment_size
-                    cols = j + segment_size
+        for i in range(v_segs):
+            rows = i + segment_size
+            for j in range(h_segs):
+                cols = j + segment_size
+                try:
+                    yield i, image[:, i:rows, j:cols]
+                except IndexError:
                     yield i, image[i:rows, j:cols]
 
-        else:
-            for sub_image in image:
-                self._segment_image(sub_image, segment_size, v_segs, h_segs)
 
 
 

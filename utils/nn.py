@@ -126,7 +126,7 @@ class ConvNeuralNetwork(NeuralNetwork):
             for num_filters, size in zip(number_filters, filter_size):
                 self.kernals[f'K{len(self.kernals)}'] = np.random.randn(num_filters, size, size) * np.sqrt(1 / size)
 
-    def _convolve_image(self, image, padding='valid'):
+    def _convolve_image(self, image, padding='valid', pooling_size=2):
 
         if padding == 'valid':
 
@@ -144,7 +144,7 @@ class ConvNeuralNetwork(NeuralNetwork):
                 last_v = 0
                 depth_tracker = 0
                 max_depth = horiz_segs * vert_segs
-                for v_layer, img_seg in self._segment_image(img, f_size, vert_segs, horiz_segs):
+                for v_layer, img_seg in self.segment_images(img, f_size, v_segs=vert_segs, h_segs=horiz_segs):
                     depth_tracker += 1
                     if v_layer != last_v:
                         try:
@@ -160,23 +160,23 @@ class ConvNeuralNetwork(NeuralNetwork):
                             del tmp_check
                             for seg in img_seg:
                                 try:
-                                    next_layer = np.vstack((next_layer, np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))))
+                                    next_layer = np.vstack((next_layer, self.apply_filters(filters_array, seg)))
                                 except NameError:
-                                    next_layer = np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))
+                                    next_layer = self.apply_filters(filters_array, seg)
                             self.image = [temp.shape, next_layer.shape]
                             temp = np.dstack((temp, next_layer))
                             del next_layer
                         else:
-                            temp = np.dstack((temp, np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape((filters, 1, 1))))
+                            temp = np.dstack((temp, self.apply_filters(filters_array, img_seg)))
                     except NameError:
                         if len(img_seg.shape) == 3:
                             for seg in img_seg:
                                 try:
-                                    temp = np.vstack((temp, np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))))
+                                    temp = np.vstack((temp, self.apply_filters(filters_array, seg)))
                                 except NameError:
-                                    temp = np.sum(np.sum(filters_array * seg, axis=1), axis=1).reshape((filters, 1, 1))
+                                    temp = self.apply_filters(filters_array, seg)
                         else:
-                            temp = np.sum(np.sum(filters_array * img_seg, axis=1), axis=1).reshape((filters, 1, 1))
+                            temp = self.apply_filters(filters_array, img_seg)
                     last_v = v_layer
                     if depth_tracker == max_depth:
                         new_img = np.hstack((new_img, temp))
@@ -191,16 +191,42 @@ class ConvNeuralNetwork(NeuralNetwork):
             return img
 
     @staticmethod
-    def _segment_image(image, segment_size, v_segs, h_segs):
+    def segment_images(image, segment_size, v_segs='', h_segs='', for_pooling=False):
 
-        for i in range(v_segs):
+        if for_pooling:
+            _, h, w = image.shape
+            assert (sum(np.array([h, w]) % segment_size) == 0), f"Pool size of {segment_size} does not fit image dims {(h, w)}"
+
+            v_segs = [i*segment_size for i in range(h // segment_size)]
+            h_segs = [i*segment_size for i in range(w // segment_size)]
+
+        else:
+
+            v_segs = range(v_segs)
+            h_segs = range(h_segs)
+
+        for i in v_segs:
             rows = i + segment_size
-            for j in range(h_segs):
+            for j in h_segs:
                 cols = j + segment_size
                 try:
                     yield i, image[:, i:rows, j:cols]
                 except IndexError:
                     yield i, image[i:rows, j:cols]
+
+    @staticmethod
+    def pool_segment(img_seg, agg_type='max'):
+
+        if agg_type == 'max':
+            return np.amax(np.amax(img_seg, axis=1), axis=1).reshape((len(img_seg), 1, 1))
+
+        elif agg_type == 'min':
+            return np.amin(np.amin(img_seg, 1), 1).reshape((len(img_seg), 1, 1))
+
+    @staticmethod
+    def apply_filters(filters_array, segment):
+        return np.sum(np.sum(filters_array * segment, axis=1), axis=1).reshape((len(filters_array), 1, 1))
+
 
 
 

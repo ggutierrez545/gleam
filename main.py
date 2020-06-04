@@ -27,10 +27,10 @@ for i in range(epochs):
             x = np.array(row[1:]).reshape(-1, 1).astype(int)
             x = (x / 255).astype('float32')
 
-            prediction = nn.feedforward(x, a_func='relu')
+            prediction = nn.nn_feedforward(x, a_func='relu')
             preds.append(np.argmax(prediction))
             trues.append(actual_idx)
-            changes = nn.backprop(prediction, y, a_func='relu')
+            changes = nn.nn_backprop(prediction, y, a_func='relu')
             nn._update_weights(changes, updater='mini_batch')
 
     for pred, true in zip(preds, trues):
@@ -50,7 +50,7 @@ with open('../../Kaggle/digit_recognizer/test.csv') as test:
         x = np.array(row).reshape(-1, 1).astype(int)
         x = (x / 255).astype('float32')
 
-        pred = nn.feedforward(x, a_func='relu')
+        pred = nn.nn_feedforward(x, a_func='relu')
         guess.append(np.argmax(pred))
 
 moo = pd.DataFrame()

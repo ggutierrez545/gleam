@@ -1,38 +1,71 @@
+import warnings
 import numpy as np
 from .nn import NeuralNetwork
 
 
 class ConvNeuralNetwork(NeuralNetwork):
 
-    def __init__(self, sizes, l_rate=0.01, m_factor=0.9):
+    def __init__(self, connected_layers, l_rate=0.01, m_factor=0.9):
 
-        super().__init__(sizes, l_rate, m_factor)
+        super().__init__(connected_layers, l_rate, m_factor)
         self.kernals = {}
+        self.conv_params = {}
+        self.conv_layers = 0
 
     def _add_convolution_layer(self, number_filters, filter_size):
 
         if type(number_filters) != list:
             self.kernals[f'K{len(self.kernals)}'] = np.random.randn(number_filters, filter_size, filter_size) * np.sqrt(1 / filter_size)
+            self.conv_layers += 1
 
         else:
             for num_filters, size in zip(number_filters, filter_size):
                 self.kernals[f'K{len(self.kernals)}'] = np.random.randn(num_filters, size, size) * np.sqrt(1 / size)
+                self.conv_layers += 1
 
-    def _convolve_image(self, image, padding='', pooling_size=2, pool_agg='max'):
+    def cnn_feedforward(self, image, padding='', pool=True, pooling_size=2, pool_agg='max', a_func='sigmoid'):
+
+        flat_imgs = self._convolve_image(image, padding=padding, pool=pool, pooling_size=pooling_size, pool_agg=pool_agg)
+
+        if self.forward_passes == 0:
+            self.sizes = [len(flat_imgs)] + self.sizes
+            self.layers = len(self.sizes)
+            self.params = self._connected_layer_init()
+
+        input_layer = self.activation(flat_imgs, func=a_func)
+        return self.nn_feedforward(input_layer, a_func=a_func)
+
+    def cnn_backprop(self, prediction, actual, a_func='sigmoid'):
+
+        wb_changes = {**self.nn_backprop(prediction, actual, a_func=a_func)}
+
+        l_layer = len(self.conv_params)
+        for layer in range(self.conv_layers):
+
+
+
+    def _convolve_image(self, image, padding='', pool=True, pooling_size=2, pool_agg='max'):
 
         # initialize img variable with original image
         img = image
 
-        for filters_array in self.kernals.values():
+        for layer, filters_array in self.kernals.items():
 
             if padding == 'same':
+                self.conv_params[f'PP{layer[-1]}'] = img
                 img = self.pad_image(img, filters_array.shape[-1])
 
-            filtered_img = self._convolve_layer(img, f_array=filters_array)
-            pooled_img = self._convolve_layer(filtered_img, pooling_size=pooling_size, pool_agg=pool_agg)
-            img = pooled_img
+            img = self._convolve_layer(img, f_array=filters_array)
+            self.conv_params[f'C{layer[-1]}'] = img
 
-        return img
+            if pool:
+                try:
+                    img = self._convolve_layer(img, pooling_size=pooling_size, pool_agg=pool_agg)
+                except AssertionError:
+                    warnings.warn(f"Conv layer {layer} was unable to be pooled due to size mismatch.")
+
+
+        return img.ravel().reshape(-1, 1)
 
     def _convolve_layer(self, image, f_array='', pooling_size='', pool_agg=''):
 
@@ -80,9 +113,9 @@ class ConvNeuralNetwork(NeuralNetwork):
                     else:
                         for seg in img_seg:
                             try:
-                                next_layer = np.vstack((next_layer, self.apply_filters(f_array, img_seg)))
+                                next_layer = np.vstack((next_layer, self.apply_filters(f_array, seg)))
                             except NameError:
-                                next_layer = self.apply_filters(f_array, img_seg)
+                                next_layer = self.apply_filters(f_array, seg)
                     temp = np.dstack((temp, next_layer))
                     del next_layer
                 else:
@@ -137,8 +170,8 @@ class ConvNeuralNetwork(NeuralNetwork):
         if agg_type == 'max':
             return np.amax(np.amax(img_seg, axis=1), axis=1).reshape((len(img_seg), 1, 1))
 
-        elif agg_type == 'min':
-            return np.amin(np.amin(img_seg, 1), 1).reshape((len(img_seg), 1, 1))
+        elif agg_type == 'avg':
+            return
 
     @staticmethod
     def apply_filters(filters_array, segment):

@@ -12,9 +12,9 @@ class NeuralNetwork(object):
         self.prev_update = {}
         self.batch_retention = {}
 
-        self.params = self._initialization()
+        self.params = self._connected_layer_init()
 
-    def _initialization(self):
+    def _connected_layer_init(self):
 
         params = {}
         for layer, neurons in enumerate(self.sizes[1:]):
@@ -25,7 +25,7 @@ class NeuralNetwork(object):
 
         return params
 
-    def feedforward(self, input_layer, a_func='sigmoid'):
+    def nn_feedforward(self, input_layer, a_func='sigmoid'):
 
         self.forward_passes += 1
         params = self.params
@@ -41,7 +41,7 @@ class NeuralNetwork(object):
 
         return params[f'A{layer}']
 
-    def backprop(self, prediction, actual, a_func='sigmoid'):
+    def nn_backprop(self, prediction, actual, a_func='sigmoid'):
 
         params = self.params
         wb_changes = {}

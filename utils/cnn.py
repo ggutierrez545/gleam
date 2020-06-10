@@ -1,9 +1,9 @@
 import warnings
 import numpy as np
-from .nn import NeuralNetwork
+from .nn_old import NeuralNetwork2
 
 
-class ConvNeuralNetwork(NeuralNetwork):
+class ConvNeuralNetwork(NeuralNetwork2):
 
     def __init__(self, connected_layers, l_rate=0.01, m_factor=0.9):
 

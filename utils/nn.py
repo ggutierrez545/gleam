@@ -4,8 +4,8 @@ import numpy as np
 class NeuralNetwork(object):
     """Base class representation of a neural network.
 
-        Contains the logic and framework
-        to build any fully connected, feed-forward neural network.
+        Contains the logic and framework to build any fully connected,
+        feed-forward neural network.
 
         Parameters
         ----------
@@ -21,7 +21,7 @@ class NeuralNetwork(object):
         seed
         l_rate
         m_factor
-        input_layer : None or :obj:`InputLayer`
+        input_layer : :obj:`None` or :obj:`InputLayer`
             None when `NeuralNetwork` class is initialized.
             `InputLayer` instance once user calls `add_input_layer` method.
         layers : :obj:`list` of :obj:`InputLayer` and :obj:`ConnectedLayer`
@@ -30,7 +30,7 @@ class NeuralNetwork(object):
             First element in list is an `InputLayer` instance and
             all subsequent elements are `ConnectedLayer` instances.
         segments : list
-            List containing `NetSegment` instances which contain much of the
+            List containing `ConnectedSegment` instances which contain much of the
             primary feed forward / back propagation logic.
 
         Methods
@@ -123,10 +123,10 @@ class NeuralNetwork(object):
         # Before adding ConnectedLayer, verify an InputLayer has already been initialized
         if [type(i) for i in self.layers].__contains__(InputLayer):
             self.layers.append(ConnectedLayer(size))
-            # After each ConnectedLayer is added, create a NetSegment from the last two elements in self.layers.
-            # Using elements from self.layers to create the NetSegment instance allows the chain of InputLayer and
+            # After each ConnectedLayer is added, create a ConnectedSegment from the last two elements in self.layers.
+            # Using elements from self.layers to create the ConnectedSegment instance allows the chain of InputLayer and
             # ConnectedLayer references to be maintained. This is crucial for this architecture
-            self.segments.append(NetSegment(*self.layers[-2:]))
+            self.segments.append(ConnectedSegment(*self.layers[-2:]))
         else:
             raise AssertionError("NeuralNetwork instance must contain an InputLayer before adding a ConnectedLayer")
 
@@ -143,16 +143,16 @@ class NeuralNetwork(object):
         Notes
         -----
         `x` overwrites the `a_vals` attribute in the `NeuralNetwork` instance's `InputLayer` allowing the information
-        to be transfered to the `NetSegment` instance containing the `InputLayer` as well, thereby making the
+        to be transfered to the `ConnectedSegment` instance containing the `InputLayer` as well, thereby making the
         feed forward process very simple.
 
         """
         # Update the InputLayer instance with a new set of values. This update will now be available in the first
-        # NetSegment instance in the self.segments list.
+        # ConnectedSegment instance in the self.segments list.
         self.input_layer.a_vals = x
 
-        # And just simply iterate through each NetSegment instance, calling the forward_pass method on each which will
-        # update the relevant ConnectedLayer for use in the next NetSegment
+        # And just simply iterate through each ConnectedSegment instance, calling the forward_pass method
+        # on each which will update the relevant ConnectedLayer for use in the next ConnectedSegment
         for segment in self.segments:
             segment.forward_pass(activation=a_function)
 
@@ -189,7 +189,7 @@ class NeuralNetwork(object):
 class InputLayer(object):
     """Simple class depicting the first layer in a neural network.
 
-    Serves as base class for `ConnectedLayer`.
+    Serves as base class for :obj:`ConnectedLayer`.
 
     Parameters
     ----------
@@ -198,17 +198,33 @@ class InputLayer(object):
 
     Attributes
     ----------
+    size : int
+        Number of neurons or rows of neurons in input layer.
     shape : tuple
-        Shape of the layer as an array,
+        Shape of the layer as an array.
     a_vals : :obj:`None` or :obj:`numpy.ndarray`
         Array of activation values.
 
     """
 
     def __init__(self, size):
-        self.size = size
-        self.shape = (size, 1)
+        self._size_shape(size)
         self.a_vals = None
+
+    def _size_shape(self, size):
+        """Determine if input is a vector or an array, i.e. if an image or not.
+
+        Parameters
+        ----------
+        size : int
+
+        """
+        if type(size) is tuple:
+            self.size = size[0]
+            self.shape = size
+        else:
+            self.size = size
+            self.shape = (size, 1)
 
     @property
     def a_vals(self):
@@ -309,11 +325,11 @@ class ConnectedLayer(InputLayer):
         self.__biases = biases
 
 
-class NetSegment(object):
+class ConnectedSegment(object):
     """Container class for two layers in a `NeuralNetwork` instance.
 
-    `NetSegment` instances contain the weights between two layers in the neural network, as well as much of the logic
-    for the feed forward and back propagation methods of the `NeuralNetwork` class. Consecutive `NetSegment` instances
+    `ConnectedSegment` instances contain the weights between two layers in the neural network, as well as much of the logic
+    for the feed forward and back propagation methods of the `NeuralNetwork` class. Consecutive `ConnectedSegment` instances
     have overlapping `front` and `back` layers (i.e they are the same `ConnectedLayer` instance). This architecture
     allows for easy access to either preceding or following layers when making calculations and allows the `NeSegment`
     class to contain simplified logic feed forward and back propagation applications.
@@ -321,16 +337,16 @@ class NetSegment(object):
     Parameters
     ----------
     input_layer : :obj:`InputLayer` or :obj:`ConnectedLayer`
-        The first layer in the `NetSegment` instance.
+        The first layer in the `ConnectedSegment` instance.
     output_layer : `ConnectedLayer`
-        The last layer in the `NetSegment` instance.
+        The last layer in the `ConnectedSegment` instance.
 
     Attributes
     ----------
     front : :obj:`InputLayer` or :obj:`ConnectedLayer`
-        The first layer in the `NetSegment` instance.
+        The first layer in the `ConnectedSegment` instance.
     back : `ConnectedLayer`
-        The last layer in the `NetSegment` instance.
+        The last layer in the `ConnectedSegment` instance.
     weights : `ndarray`
         Weights of connections between front and back layers.
     shape : tuple
@@ -426,7 +442,7 @@ class NetSegment(object):
 
     @property
     def b_updates(self):
-        """Array container for `NetSegment` back layer's bias updates.
+        """Array container for `ConnectedSegment` back layer's bias updates.
 
         Setter method contains logic to ensure dimensional consistency with back layer's bias array.
 
@@ -497,7 +513,7 @@ class NetSegment(object):
             return None
 
     def update_weights(self, l_rate, m_factor, updater='', batch_size=50, momentum=True):
-        """Function to update `NetSegment` instance's weights and biases based on user input.
+        """Function to update `ConnectedSegment` instance's weights and biases based on user input.
 
         Parameters
         ----------

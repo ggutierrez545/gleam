@@ -180,7 +180,6 @@ class ConvolutionLayer(SegmentationLayer):
 
         self.output_image = filtered_image
 
-
     def _apply_kernals(self, image_segment):
         """Apply kernals (filters) to an image segment.
 

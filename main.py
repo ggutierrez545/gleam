@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 import csv
 import time
-from utils.nn import NeuralNetwork, NeuralNetwork2
+from utils.nn import NeuralNetwork
 
 np.random.seed(seed=10)
 
 
 # nn = NeuralNetwork2([784, 128, 64, 10])
 
-epochs = 1
+epochs = 10
 nn = NeuralNetwork()
 
 nn.add_input_layer(784)

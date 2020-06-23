@@ -186,12 +186,4 @@ class ConvNeuralNetwork(NeuralNetwork):
             return np.pad(image, (pad, pad), 'constant', constant_values=0)
 
 
-class ConvolutionLayer(InputLayer):
-
-    def __init__(self, kernals, kernal_size=3):
-        super().__init__(kernals)
-        self.kernal_size = kernal_size
-
-    def _create_filters(self):
-
 

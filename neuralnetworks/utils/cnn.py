@@ -1,5 +1,12 @@
 import numpy as np
-from utils.nn import NeuralNetwork, InputLayer
+from .nn import NeuralNetwork, InputLayer
+
+
+class ConvolutionalNeuralNet(NeuralNetwork):
+
+    def __init__(self, seed=10, l_rate=0.01, m_factor=0.9):
+        super().__init__(seed=seed, l_rate=l_rate, m_factor=m_factor)
+
 
 
 class SegmentationLayer(object):
@@ -122,7 +129,8 @@ class ConvolutionLayer(SegmentationLayer):
         self.size = num_kernals
         self.kernals = None
         self.kernal_size = kernal_size
-        self.output_image = None
+        self.raw_output = None
+        self.activated_output = None
         # Initialize random kernals
         self._create_kernals()
 
@@ -178,7 +186,7 @@ class ConvolutionLayer(SegmentationLayer):
             except IndexError:
                 filtered_image[row:lst_row, col:lst_col] = self._apply_kernals(img_seg)
 
-        self.output_image = filtered_image
+        self.raw_output = filtered_image
 
     def _apply_kernals(self, image_segment):
         """Apply kernals (filters) to an image segment.
@@ -267,20 +275,72 @@ class ConvolutionSegment(object):
             f"cannot be {type(back)}; must be ConvolutionLayer instance."
         self.__back = back
 
-    def forward_pass(self, padding='valid'):
+    def forward_pass(self, padding='valid', a_func='relu'):
         """Pass an image through a `ConvolutionLayer` instance.
 
         Parameters
         ----------
         padding : str
             Keyword depicting padding method to use for filtered images.
+        a_func : str
+            Keyword depicting activation function to use.
 
         """
         if type(self.front) is InputLayer:
             self.back.process_image(self.front.a_vals, padding=padding)
         else:
-            self.back.process_image(self.front.output_image, padding=padding)
+            self.front.activated_output = self.activation(self.front.raw_output, func=a_func)
+            self.back.process_image(self.front.activated_output, padding=padding)
+
+    @staticmethod
+    def activation(val, func='', derivative=False):
+        """
+        See Also
+        --------
+        ConnectedSegment
+
+        """
+
+        if func == 'sigmoid':
+            if derivative:
+                return (np.exp(-val)) / ((1 + np.exp(-val)) ** 2)
+            else:
+                return 1 / (1 + np.exp(-val))
+
+        elif func == 'relu':
+            if derivative:
+                return np.array([1.0 if i > 0.0 else 0.0 for i in val]).reshape(-1, 1)
+            else:
+                return np.array([max(0, i[0]) for i in val]).reshape(-1, 1)
+
+        else:
+            raise KeyError(f"Unrecognized activation function: {func}")
 
 
+class PoolingSegment(object):
 
+    def __init__(self, input_layer, output_layer):
+        self.front = input_layer
+        self.back = output_layer
+
+    @property
+    def front(self):
+        return self.__front
+
+    @front.setter
+    def front(self, front):
+        assert type(front) is ConvolutionLayer, f"PoolingSegment front must be ConvolutionLayer, not {type(front)}"
+        self.__front = front
+
+    @property
+    def back(self):
+        return self.__back
+
+    @back.setter
+    def back(self, back):
+        assert type(back) is PoolingLayer, f"PoolingSegment back must be PoolingLayer, not {type(back)}"
+        self.__back = back
+
+    def forward_pass(self):
+        self.back.process_image(self.front.output_image)
 

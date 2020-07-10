@@ -130,7 +130,7 @@ class NeuralNetwork(object):
         else:
             raise AssertionError("NeuralNetwork instance must contain an InputLayer before adding a ConnectedLayer")
 
-    def nn_feedforward(self, x, a_function='relu'):
+    def feedforward(self, x, a_function='relu'):
         """Method to feed forward an example through the `NeuralNetwork` and make a prediction.
 
         Parameters
@@ -156,7 +156,7 @@ class NeuralNetwork(object):
         for segment in self.segments:
             segment.forward_pass(activation=a_function)
 
-    def nn_backpropagate(self, truth, a_function='relu', updater='sgd', batch_size=50, momentum=True):
+    def backpropagate(self, truth, a_function='relu', updater='sgd', batch_size=50, momentum=True):
         """Method to back propagate the error from a training example
 
         Parameters
@@ -216,7 +216,7 @@ class InputLayer(object):
 
         Parameters
         ----------
-        size : int
+        size : int or tuple
 
         """
         if type(size) is tuple:
@@ -225,6 +225,7 @@ class InputLayer(object):
         else:
             self.size = size
             self.shape = (size, 1)
+        self.flat_len = np.prod(size)
 
     @property
     def a_vals(self):
@@ -383,8 +384,9 @@ class ConnectedSegment(object):
     def __init__(self, input_layer, output_layer):
         self.front = input_layer
         self.back = output_layer
-        self.weights = np.random.randn(output_layer.size, input_layer.size) * np.sqrt(1 / input_layer.size)
-        self.shape = self.weights.shape
+        self.weights = None
+        self._create_weights()
+        self.shape = None
         self.w_updates = None
         self.prev_w_updates = 0
         self.w_batch = None
@@ -392,6 +394,12 @@ class ConnectedSegment(object):
         self.prev_b_updates = 0
         self.b_batch = None
         self.forward_passes = 0
+
+    def _create_weights(self):
+        if type(self.front) in [InputLayer, ConnectedLayer]:
+            self.weights = np.random.randn(self.back.size, self.front.size) * np.sqrt(1 / self.front.size)
+        else:
+            self.weights = np.random.randn(self.back.size, len(self.front.raveled_output)) * np.sqrt(1 / len(self.front.raveled_output))
 
     @property
     def weights(self):

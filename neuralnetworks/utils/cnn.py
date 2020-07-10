@@ -1,5 +1,5 @@
 import numpy as np
-from .nn import NeuralNetwork, InputLayer
+from neuralnetworks.utils.nn import NeuralNetwork, InputLayer, ConnectedLayer, ConnectedSegment
 
 
 class ConvolutionalNeuralNet(NeuralNetwork):
@@ -7,6 +7,58 @@ class ConvolutionalNeuralNet(NeuralNetwork):
     def __init__(self, seed=10, l_rate=0.01, m_factor=0.9):
         super().__init__(seed=seed, l_rate=l_rate, m_factor=m_factor)
 
+    def add_connected_layer(self, size):
+        """Method to add `ConnectedLayer` of inputted size.
+
+        Overwrites method of same name from `NeuralNetwork` class.
+
+        Parameters
+        ----------
+        size : int
+            Number of neurons in connected layer.
+
+        Raises
+        ------
+        AssertionError
+            If `NeuralNetwork` does not already contain an `InputLayer` instance.
+
+        """
+        # Before adding ConnectedLayer, verify an InputLayer has already been initialized
+        if [type(i) for i in self.layers].__contains__(InputLayer):
+            self.layers.append(ConnectedLayer(size))
+            # After each ConnectedLayer is added, create a ConnectedSegment from the last two elements in self.layers.
+            # Using elements from self.layers to create the ConnectedSegment instance allows the chain of InputLayer and
+            # ConnectedLayer references to be maintained. This is crucial for this architecture
+            if type(self.layers[-2]) in [ConvolutionLayer, PoolingLayer]:
+                self.layers[-2].raveled_output = self.layers[-2].output_image.ravel().reshape(-1, 1)
+            self.segments.append(ConnectedSegment(*self.layers[-2:]))
+        else:
+            raise AssertionError("NeuralNetwork instance must contain an InputLayer before adding a ConnectedLayer")
+
+    def add_convolution_layer(self, num_kernals, kernal_size=3, padding='valid'):
+        if [type(i) for i in self.layers].__contains__(InputLayer):
+            temp = ConvolutionLayer(num_kernals, kernal_size=kernal_size, padding=padding)
+            #temp.flat_len = self.layers[-1].shape
+            self.layers.append(temp)
+            # After each ConvolutionLayer is added, create a ConvolutionSegment from the last two elements in
+            # self.layers.
+            self.segments.append(ConvolutionSegment(*self.layers[-2:]))
+        else:
+            raise AssertionError("ConvolutionlNeuralNet instance must contain"
+                                 " an InputLayer before adding a ConvolutionLayer")
+
+    def add_pooling_layer(self, agg_type, pool_size=2):
+        if type(self.layers[-1]) is not ConvolutionLayer:
+            raise AssertionError(f"PoolingLayer must come after ConvolutionLayer, not {type(self.layers[-1])}")
+        else:
+            self.layers.append(PoolingLayer(agg_type=agg_type, pool_size=pool_size))
+            self.segments.append(PoolingSegment(*self.layers[-2:]))
+
+    def feedforward(self, x, a_function='relu'):
+
+        self.input_layer = x
+        for segment in self.segments:
+            segment.forward_pass()
 
 
 class SegmentationLayer(object):
@@ -60,6 +112,9 @@ class PoolingLayer(SegmentationLayer):
         self.agg_type = agg_type
         self.pool_size = pool_size
         self.output_image = None
+        self.raveled_output = None
+        self.output_size = None
+        self.output_shape = None
 
     @property
     def agg_type(self):
@@ -103,11 +158,15 @@ class PoolingLayer(SegmentationLayer):
 
         return pool.reshape((len(image_segment), 1, 1))
 
+    def calc_output_chars(self, prev_layer):
+        # TODO: this ish
+        return
+
 
 class ConvolutionLayer(SegmentationLayer):
     """Convolution layer for use in a CNN.
 
-    Child class of `InputLayer`; contains kernal (filter) arrays along with
+    Child class of `SegmentationLayer`; contains kernal (filter) arrays along with
     logic to apply them to an image.
 
     Parameters
@@ -116,6 +175,8 @@ class ConvolutionLayer(SegmentationLayer):
         Number of kernals in layer.
     kernal_size : int
         Size of each kernal, i.e. 3 -> 3x3, 5 -> 5x5, etc.
+    padding : str
+    activation_func : str
 
     Attributes
     ----------
@@ -124,13 +185,18 @@ class ConvolutionLayer(SegmentationLayer):
         Array of convolution kernals.
 
     """
-    def __init__(self, num_kernals, kernal_size=3):
+    def __init__(self, num_kernals, kernal_size=3, padding='valid', activation_func='relu'):
         super().__init__(kernal_size)
         self.size = num_kernals
+        self.padding = padding
+        self.a_func = activation_func
         self.kernals = None
         self.kernal_size = kernal_size
         self.raw_output = None
-        self.activated_output = None
+        self.output_image = None
+        self.raveled_output = None
+        self.output_shape = None
+        self.output_size = None
         # Initialize random kernals
         self._create_kernals()
 
@@ -149,22 +215,20 @@ class ConvolutionLayer(SegmentationLayer):
         args = [self.size, self.kernal_size, self.kernal_size]
         self.kernals = np.random.randn(*args) * np.sqrt(1 / self.kernal_size)
 
-    def process_image(self, image, padding=''):
+    def process_image(self, image):
         """Method to apply kernals to an image or array of images.
 
         Parameters
         ----------
         image : :obj:`ndarray`
             2d array (an image) or 3d array (array of images)
-        padding : str
-            Keyword determining padding methodology
 
         Returns
         -------
         :obj:`ndarray`
 
         """
-        if padding == 'same':
+        if self.padding == 'same':
             image = self._pad_image(image)
 
         try:
@@ -236,6 +300,34 @@ class ConvolutionLayer(SegmentationLayer):
         except ValueError:
             return np.pad(image, (pad, pad), 'constant', constant_values=0)
 
+    def calc_output_chars(self, prev_layer):
+        """Method to calculate length of flattened output.
+
+        Parameters
+        ----------
+        prev_layer : :obj:`InputLayer`, :obj:`PoolingLayer`, or :obj:`ConvoluionLayer`
+            The previous layer in the CNN.
+
+        Returns
+        -------
+
+        """
+        if self.padding == 'valid':
+            if type(prev_layer) is InputLayer:
+                new_shape = [self.size, *[x - self.kernal_size + 1 for x in prev_layer.shape[-2:]]]
+                flat_len = np.prod(new_shape)
+                if len(prev_layer.shape) == 3:
+                    flat_len = flat_len * prev_layer.shape[0]
+                    new_shape[0] = new_shape[0] * prev_layer.shape[0]
+                self.output_shape = new_shape
+                self.output_size = flat_len
+            else:
+                return
+
+
+        else:
+            return
+
 
 class ConvolutionSegment(object):
 
@@ -255,9 +347,9 @@ class ConvolutionSegment(object):
 
     @front.setter
     def front(self, front):
-        assert type(front) in [InputLayer, ConvolutionLayer, PoolingLayer], f"" \
+        assert type(front) in [InputLayer, PoolingLayer], f"" \
             f"ConvolutionSegment input_layer cannot be {type(front)}; must be " \
-            "InputLayer, ConvolutionLayer, or PoolingLayer instance."
+            "InputLayer or PoolingLayer instance."
         self.__front = front
 
     @property
@@ -275,22 +367,15 @@ class ConvolutionSegment(object):
             f"cannot be {type(back)}; must be ConvolutionLayer instance."
         self.__back = back
 
-    def forward_pass(self, padding='valid', a_func='relu'):
+    def forward_pass(self):
         """Pass an image through a `ConvolutionLayer` instance.
-
-        Parameters
-        ----------
-        padding : str
-            Keyword depicting padding method to use for filtered images.
-        a_func : str
-            Keyword depicting activation function to use.
 
         """
         if type(self.front) is InputLayer:
-            self.back.process_image(self.front.a_vals, padding=padding)
+            self.back.process_image(self.front.a_vals)
         else:
-            self.front.activated_output = self.activation(self.front.raw_output, func=a_func)
-            self.back.process_image(self.front.activated_output, padding=padding)
+            self.front.output_image = self.activation(self.front.raw_output, self.front.a_func)
+            self.back.process_image(self.front.output_image)
 
     @staticmethod
     def activation(val, func='', derivative=False):

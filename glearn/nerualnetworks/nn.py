@@ -1,5 +1,5 @@
 import numpy as np
-from ..resources.activation import activation
+from ..utils.activation import activation
 
 
 class NeuralNetwork(object):

@@ -36,7 +36,7 @@ for i in range(epochs):
             x = (x / 255).astype('float32')
 
             nn.nn_feedforward(x, a_function='relu')
-            preds.append(np.argmax(nn.segments[-1].back.a_vals))
+            preds.append(np.argmax(nn.segments[-1].back.act_vals))
             trues.append(actual_idx)
             nn.nn_backpropagate(y, a_function='relu')
 

@@ -37,9 +37,9 @@ class ConvolutionalNeuralNet(NeuralNetwork):
         else:
             raise AssertionError("NeuralNetwork instance must contain an InputLayer before adding a ConnectedLayer")
 
-    def add_convolution_layer(self, num_kernals, kernal_size=3, padding='valid'):
+    def add_convolution_layer(self, num_kernals, kernal_size=3, activation_func='relu', padding='valid'):
         if [type(i) for i in self.layers].__contains__(InputLayer):
-            self.layers.append(ConvolutionLayer(num_kernals, kernal_size=kernal_size, padding=padding))
+            self.layers.append(ConvolutionLayer(num_kernals, kernal_size=kernal_size, padding=padding, activation_func=activation_func))
             # Calculate output characteristics from new layer
             self.layers[-1].calc_output_chars(self.layers[-2])
             # After each ConvolutionLayer is added, create a ConvolutionSegment from the last two elements in
@@ -63,18 +63,22 @@ class ConvolutionalNeuralNet(NeuralNetwork):
         for segment in self.segments:
             segment.forward_pass()
 
-    def backpropagate(self, truth, updater='sgd', batch_size=50, momentum=True):
+    def backpropagate(self, truth, updater='sgd', batch_size=50, momentum=False):
 
         cost = loss(self.layers[-1].act_vals, truth, loss_type=self.loss_func)
 
         delta = None
         for segment in reversed(self.segments):
             if delta is None:
-                delta = (cost * activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True))
+                activated = activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True)
+                if self.loss_func == 'cross-entropy':
+                    delta = (cost.T @ activated).reshape(-1, 1)
+                else:
+                    delta = cost * activated
             segment.back_propagate(delta)
             delta = segment.setup_next_delta(delta)
             if type(segment.back) is not PoolingLayer:
-                segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=momentum)
+                segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=False)
 
 
 class SegmentationLayer(object):
@@ -255,6 +259,7 @@ class ConvolutionLayer(SegmentationLayer):
         self.output_size = None
         self.padding = padding
         self.a_func = activation_func
+        self.kernal_hist = []
 
     @property
     def kernals(self):
@@ -294,7 +299,7 @@ class ConvolutionLayer(SegmentationLayer):
 
         """
         args = [self.num_kernals, self.kernal_size, self.kernal_size]
-        self.kernals = np.random.randn(*args) * np.sqrt(1 / self.kernal_size)
+        self.kernals = np.random.randn(*args)
 
     def process_image(self, image):
         """Method to apply kernals to an image or array of images.
@@ -451,7 +456,7 @@ class ConvolutionSegment(object):
             self.back.process_image(self.front.output_image)
 
     def back_propagate(self, delta):
-
+        self.back.kernal_hist.append(delta.max())
         if type(self.front) is InputLayer:
             image = self.front.act_vals
         else:
@@ -464,6 +469,8 @@ class ConvolutionSegment(object):
                     self.kernal_updates += delta[k:lst_k, row, col].reshape(-1, 1, 1) * img_seg[k:lst_k]
             else:
                 self.kernal_updates += delta[:, row, col].reshape(-1, 1, 1) * img_seg
+
+        self.kernal_updates /= self.back.num_kernals
 
     def setup_next_delta(self, delta):
 
@@ -520,6 +527,8 @@ class ConvolutionSegment(object):
 
                     next_delta[:, row, col] += np.sum(np.sum(hold, axis=1), axis=1)
 
+            next_delta = next_delta / self.back.num_kernals
+
             return np.rot90(next_delta, 2, (1, 2))
 
     def update_weights(self, l_rate, m_factor, updater='', batch_size='', momentum=True):
@@ -563,11 +572,14 @@ class PoolingSegment(object):
             self.unpool[:, row:lst_row, col:lst_col][img_seg == img_seg.max()] = img_seg.max()
 
     def setup_next_delta(self, delta):
-        prev_num_kernals = delta.shape[0] // self.front.shape[0]
-        summed_delta = np.zeros((self.front.shape[0], *delta.shape[-2:]))
-        for fst in np.arange(0, delta.shape[0], prev_num_kernals):
-            lst = fst + prev_num_kernals
-            summed_delta += delta[fst:lst]
+        if delta.shape[0] == self.front.shape[0]:
+            summed_delta = delta
+        else:
+            prev_num_kernals = delta.shape[0] // self.front.shape[0]
+            summed_delta = np.zeros((self.front.shape[0], *delta.shape[-2:]))
+            for fst in np.arange(0, delta.shape[0], prev_num_kernals):
+                lst = fst + prev_num_kernals
+                summed_delta += delta[fst:lst]
 
         new_delta = np.zeros(self.unpool.shape)
         for row, col, img_seg in self.back.segment_image(self.unpool, self.back.shape[-2:]):

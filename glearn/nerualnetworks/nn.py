@@ -1,5 +1,5 @@
 import numpy as np
-from ..utils.activation import activation
+from ..utils.activation import activation, loss
 
 
 class NeuralNetwork(object):
@@ -48,13 +48,14 @@ class NeuralNetwork(object):
             Back propagate the resulting error from a `nn_feedforward` pass.
 
     """
-    def __init__(self, seed=10, l_rate=0.01, m_factor=0.9):
+    def __init__(self, seed=10, l_rate=0.01, m_factor=0.9, loss_func='mean-squared'):
         self.seed = seed
         self.l_rate = l_rate
         self.m_factor = m_factor
         self.input_layer = None
         self.layers = []
         self.segments = []
+        self.loss_func = loss_func
 
         np.random.seed(seed)
 
@@ -172,12 +173,16 @@ class NeuralNetwork(object):
             Toggle to include momentum calculation in updater method.
 
         """
-        cost = self.segments[-1].back.act_vals - truth
+        cost = loss(self.layers[-1].act_vals, truth, loss_type=self.loss_func)
 
         delta = None
         for segment in reversed(self.segments):
             if delta is None:
-                delta = (cost * activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True))
+                activated = activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True)
+                if self.loss_func == 'cross-entropy':
+                    delta = (cost.T @ activated).reshape(-1, 1)
+                else:
+                    delta = cost * activated
             segment.back_propagate(delta)
             delta = segment.setup_next_delta(delta)
             segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=momentum)
@@ -391,6 +396,7 @@ class ConnectedSegment(object):
         self.prev_b_updates = 0
         self.b_batch = None
         self.forward_passes = 0
+        self.weight_hist = []
 
     def _create_weights(self):
         if type(self.front) in [InputLayer, ConnectedLayer]:
@@ -525,7 +531,7 @@ class ConnectedSegment(object):
                 activated = activation(self.front.raw_output, func=self.front.a_func, derivative=True)
                 return (self.weights.T @ delta).reshape(*self.front.shape) * activated
             except AttributeError:
-
+                return (self.weights.T @ delta).reshape(*self.front.shape)
 
     def update_weights(self, l_rate, m_factor, updater='', batch_size=50, momentum=True):
         """Function to update `ConnectedSegment` instance's weights and biases based on user input.
@@ -549,6 +555,7 @@ class ConnectedSegment(object):
             If `updater` is unsupported.
 
         """
+        self.weight_hist.append(self.weights.max())
 
         if updater == 'sgd':
 

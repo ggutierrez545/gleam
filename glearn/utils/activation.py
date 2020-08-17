@@ -28,7 +28,7 @@ def activation(values, func='', derivative=False):
 
     """
     val = copy.deepcopy(values)
-    val[val < 1e-16] = 0
+    val[val < 1e-8] = 0
     if func == 'sigmoid':
         if derivative:
             return (np.exp(-val)) / ((1 + np.exp(-val)) ** 2)
@@ -44,12 +44,18 @@ def activation(values, func='', derivative=False):
         return val
 
     elif func == 'softmax':
-        sm = np.exp(val) / np.sum(np.exp(val), axis=0)
+        # d is meant for numerical stability, keeps vals in val close
+        # to zero.
+        d = -np.max(val)
+        exp_sum = np.sum(np.exp(val + d), axis=0)
+        softmax = np.exp(val + d) / exp_sum
         if derivative:
-            sm[np.argmax(val)] -= 1
-            return sm
+            jacobian = softmax @ -softmax.reshape(1, -1)
+            diag = softmax - softmax**2
+            np.fill_diagonal(jacobian, diag)
+            return jacobian
         else:
-            return sm
+            return softmax
 
     else:
         raise KeyError(f"Unrecognized activation function: {func}")
@@ -57,11 +63,12 @@ def activation(values, func='', derivative=False):
 
 def loss(prediction, truth, loss_type=''):
 
+    true = np.argmax(truth)
+
     if loss_type == 'mean-squared':
         return prediction - truth
+
     elif loss_type == 'cross-entropy':
-        return -np.log(np.max(prediction))
-    elif loss_type == 'avg-cross-entropy':
-        return -(1 / len(prediction)) * np.sum([i / np.log(prediction) for i in prediction])
+        return -truth / prediction
 
 

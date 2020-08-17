@@ -1,11 +1,12 @@
 import numpy as np
+from ..utils.activation import activation, loss
 
 
 class NeuralNetwork(object):
     """Base class representation of a neural network.
 
-        Contains the logic and framework
-        to build any fully connected, feed-forward neural network.
+        Contains the logic and framework to build any fully connected,
+        feed-forward neural network.
 
         Parameters
         ----------
@@ -21,7 +22,7 @@ class NeuralNetwork(object):
         seed
         l_rate
         m_factor
-        input_layer : None or :obj:`InputLayer`
+        input_layer : :obj:`None` or :obj:`InputLayer`
             None when `NeuralNetwork` class is initialized.
             `InputLayer` instance once user calls `add_input_layer` method.
         layers : :obj:`list` of :obj:`InputLayer` and :obj:`ConnectedLayer`
@@ -30,7 +31,7 @@ class NeuralNetwork(object):
             First element in list is an `InputLayer` instance and
             all subsequent elements are `ConnectedLayer` instances.
         segments : list
-            List containing `NetSegment` instances which contain much of the
+            List containing `ConnectedSegment` instances which contain much of the
             primary feed forward / back propagation logic.
 
         Methods
@@ -47,13 +48,14 @@ class NeuralNetwork(object):
             Back propagate the resulting error from a `nn_feedforward` pass.
 
     """
-    def __init__(self, seed=10, l_rate=0.01, m_factor=0.9):
+    def __init__(self, seed=10, l_rate=0.01, m_factor=0.9, loss_func='mean-squared'):
         self.seed = seed
         self.l_rate = l_rate
         self.m_factor = m_factor
         self.input_layer = None
         self.layers = []
         self.segments = []
+        self.loss_func = loss_func
 
         np.random.seed(seed)
 
@@ -84,8 +86,8 @@ class NeuralNetwork(object):
 
         Parameters
         ----------
-        size : int
-            Number of neurons in input layer.
+        size : int or tuple
+            Number of neurons in input layer or shape of input image.
 
         Raises
         ------
@@ -103,16 +105,18 @@ class NeuralNetwork(object):
         else:
             # Accessibility of InputLayer makes feedforward method much easier. Same instance of InputLayer class is
             # referenced in both self.input_layer and self.layers
-            self.input_layer = InputLayer(size)
+            self.input_layer = InputLayer(size, parent=self.__class__)
             self.layers.append(self.input_layer)
 
-    def add_connected_layer(self, size):
+    def add_connected_layer(self, size, activation_function='relu'):
         """Method to add `ConnectedLayer` of inputted size.
 
         Parameters
         ----------
         size : int
             Number of neurons in connected layer.
+        activation_function : str
+            Keyword indicating the activation function to use for the layer.
 
         Raises
         ------
@@ -122,49 +126,45 @@ class NeuralNetwork(object):
         """
         # Before adding ConnectedLayer, verify an InputLayer has already been initialized
         if [type(i) for i in self.layers].__contains__(InputLayer):
-            self.layers.append(ConnectedLayer(size))
-            # After each ConnectedLayer is added, create a NetSegment from the last two elements in self.layers.
-            # Using elements from self.layers to create the NetSegment instance allows the chain of InputLayer and
+            self.layers.append(ConnectedLayer(size, activation=activation_function))
+            # After each ConnectedLayer is added, create a ConnectedSegment from the last two elements in self.layers.
+            # Using elements from self.layers to create the ConnectedSegment instance allows the chain of InputLayer and
             # ConnectedLayer references to be maintained. This is crucial for this architecture
-            self.segments.append(NetSegment(*self.layers[-2:]))
+            self.segments.append(ConnectedSegment(*self.layers[-2:]))
         else:
             raise AssertionError("NeuralNetwork instance must contain an InputLayer before adding a ConnectedLayer")
 
-    def nn_feedforward(self, x, a_function='relu'):
+    def feedforward(self, x):
         """Method to feed forward an example through the `NeuralNetwork` and make a prediction.
 
         Parameters
         ----------
         x : `numpy.ndarray`
             Numpy array containing training example input data.
-        a_function : str
-            String keyword for activation function. Supported keywords are 'relu' and 'sigmoid'.
 
         Notes
         -----
-        `x` overwrites the `a_vals` attribute in the `NeuralNetwork` instance's `InputLayer` allowing the information
-        to be transfered to the `NetSegment` instance containing the `InputLayer` as well, thereby making the
+        `x` overwrites the `act_vals` attribute in the `NeuralNetwork` instance's `InputLayer` allowing the information
+        to be transfered to the `ConnectedSegment` instance containing the `InputLayer` as well, thereby making the
         feed forward process very simple.
 
         """
         # Update the InputLayer instance with a new set of values. This update will now be available in the first
-        # NetSegment instance in the self.segments list.
-        self.input_layer.a_vals = x
+        # ConnectedSegment instance in the self.segments list.
+        self.input_layer.act_vals = x
 
-        # And just simply iterate through each NetSegment instance, calling the forward_pass method on each which will
-        # update the relevant ConnectedLayer for use in the next NetSegment
+        # And just simply iterate through each ConnectedSegment instance, calling the forward_pass method
+        # on each which will update the relevant ConnectedLayer for use in the next ConnectedSegment
         for segment in self.segments:
-            segment.forward_pass(activation=a_function)
+            segment.forward_pass()
 
-    def nn_backpropagate(self, truth, a_function='relu', updater='sgd', batch_size=50, momentum=True):
+    def backpropagate(self, truth, updater='sgd', batch_size=50, momentum=True):
         """Method to back propagate the error from a training example
 
         Parameters
         ----------
         truth : `np.ndarray`
             Array depicting the training example's actual value.
-        a_function : :obj:str, default 'relu'
-            String keyword for activation function. Supported keywords are 'relu' and 'sigmoid'.
         updater : :obj:str, default 'sgd'
             String keyword for weights and biases updater method. Support keywords are 'sgd' and 'mini-batch'.
         batch_size : :obj:int, default 50
@@ -173,23 +173,25 @@ class NeuralNetwork(object):
             Toggle to include momentum calculation in updater method.
 
         """
-        cost = self.segments[-1].back.a_vals - truth
+        cost = loss(self.layers[-1].act_vals, truth, loss_type=self.loss_func)
 
+        delta = None
         for segment in reversed(self.segments):
-            try:
-                delta = (cost * segment.activation(segment.back.z_vals, func=a_function, derivative=True))
-                del cost
-            except NameError:
-                pass
+            if delta is None:
+                activated = activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True)
+                if self.loss_func == 'cross-entropy':
+                    delta = (cost.T @ activated).reshape(-1, 1)
+                else:
+                    delta = cost * activated
             segment.back_propagate(delta)
-            delta = segment.setup_next_delta(delta, activation=a_function)
+            delta = segment.setup_next_delta(delta)
             segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=momentum)
 
 
 class InputLayer(object):
     """Simple class depicting the first layer in a neural network.
 
-    Serves as base class for `ConnectedLayer`.
+    Serves as base class for :obj:`ConnectedLayer`.
 
     Parameters
     ----------
@@ -198,47 +200,60 @@ class InputLayer(object):
 
     Attributes
     ----------
+    size : int
+        Number of neurons or rows of neurons in input layer.
     shape : tuple
-        Shape of the layer as an array,
-    a_vals : :obj:`None` or :obj:`numpy.ndarray`
+        Shape of the layer as an array.
+    act_vals : :obj:`None` or :obj:`numpy.ndarray`
         Array of activation values.
 
     """
+    def __init__(self, size, parent):
+        self._size_shape(size)
+        self.act_vals = None
+        self._parent = parent
 
-    def __init__(self, size):
-        self.size = size
-        self.shape = (size, 1)
-        self.a_vals = None
+    def _size_shape(self, size):
+        """Determine if input is a vector or an array, i.e. if an image or not.
+
+        Parameters
+        ----------
+        size : int or tuple
+
+        """
+        if type(size) is tuple:
+            self.shape = size
+        else:
+            self.shape = (size, 1)
+        self.size = int(np.prod(self.shape))
 
     @property
-    def a_vals(self):
+    def act_vals(self):
         """Array container for activation values.
 
-        Setter method has a number of checks to ensure the new `a_vals` is the same size and shape as the
-        previous `a_vals`. This is to maintain dimensional continuity within the `NeuralNetwork` instance.
+        Setter method has a number of checks to ensure the new `act_vals` is the same size and shape as the
+        previous `act_vals`. This is to maintain dimensional continuity within the `NeuralNetwork` instance.
 
         Raises
         ------
         AssertionError
-            If number of neurons in new `a_vals` does not match previous neuron count.
+            If number of neurons in new `act_vals` does not match previous neuron count.
         ValueError
-            If new `a_vals` array shape does not match previous `a_vals` array shape.
+            If new `act_vals` array shape does not match previous `act_vals` array shape.
 
         """
-        return self.__a_vals
+        return self.__act_vals
 
-    @a_vals.setter
-    def a_vals(self, a_vals):
+    @act_vals.setter
+    def act_vals(self, act_vals):
         try:
-            assert len(a_vals) == self.size, f"New layer size, {len(a_vals)}, != initial layer size {self.size}"
-            if len(a_vals.shape) == 1:
-                self.__a_vals = a_vals.reshape(-1, 1)
-            elif a_vals.shape == self.shape:
-                self.__a_vals = a_vals
+            assert np.prod(act_vals.shape) == self.size, f"New layer size, {len(act_vals)}, != initial layer size {self.size}"
+            if self._parent is NeuralNetwork:
+                self.__act_vals = act_vals.reshape(-1, 1)
             else:
-                raise ValueError(f"New layer shape, {a_vals.shape}, != initial layer shape {self.shape}")
-        except TypeError:
-            self.__a_vals = None
+                self.__act_vals = act_vals
+        except AttributeError:
+            self.__act_vals = None
 
 
 class ConnectedLayer(InputLayer):
@@ -248,10 +263,12 @@ class ConnectedLayer(InputLayer):
     ----------
     size : int
         Number of neurons in the connected layer.
+    activation : str
+        Keyword indicating the type of activation function to use.
 
     Attributes
     ----------
-    z_vals : :obj:`None` or :obj:`numpy.array`
+    raw_vals : :obj:`None` or :obj:`numpy.array`
         Layer's raw values, i.e. before passing through activation function.
     biases : `numpy.array`
         Bias value associated with each neuron in the layer.
@@ -261,33 +278,35 @@ class ConnectedLayer(InputLayer):
     `InputLayer`
 
     """
-    def __init__(self, size):
-        super().__init__(size)
-        self.z_vals = None
+    def __init__(self, size, activation='', parent=''):
+        super().__init__(size, parent=parent)
+        self.raw_vals = None
         self.biases = np.zeros((size, 1)) + 0.01
+        self.a_func = activation
 
     @property
-    def z_vals(self):
+    def raw_vals(self):
         """Array container for layer values pre-activation function.
 
-        Setter method verifies the new `z_vals` array shape matches the old `z_vals` array shape. If the attempted
-        `z_vals` is not an array and does not have a `shape` method, `z_vals` is set to `None`.
+        Setter method verifies the new `raw_vals` array shape matches the old `raw_vals` array shape. If the attempted
+        `raw_vals` is not an array and does not have a `shape` method, `raw_vals` is set to `None`.
 
         Raises
         ------
         AssertionError
-            If new `z_vals` array shape is not equal to previous shape.
+            If new `raw_vals` array shape is not equal to previous shape.
 
         """
-        return self.__z_vals
+        return self.__raw_vals
 
-    @z_vals.setter
-    def z_vals(self, z_vals):
+    @raw_vals.setter
+    def raw_vals(self, raw_vals):
         try:
-            assert z_vals.shape == self.shape, f"New z layer shape, {z_vals.shape}, != initial layer shape {self.shape}"
-            self.__z_vals = z_vals
+            assert raw_vals.shape == self.shape, f"Raw layer shape, {raw_vals.shape}, != initial shape {self.shape}"
+            self.__raw_vals = raw_vals
+            self.act_vals = activation(self.raw_vals, func=self.a_func)
         except AttributeError:
-            self.__z_vals = None
+            self.__raw_vals = None
 
     @property
     def biases(self):
@@ -309,11 +328,11 @@ class ConnectedLayer(InputLayer):
         self.__biases = biases
 
 
-class NetSegment(object):
+class ConnectedSegment(object):
     """Container class for two layers in a `NeuralNetwork` instance.
 
-    `NetSegment` instances contain the weights between two layers in the neural network, as well as much of the logic
-    for the feed forward and back propagation methods of the `NeuralNetwork` class. Consecutive `NetSegment` instances
+    `ConnectedSegment` instances contain the weights between two layers in the neural network, as well as much of the logic
+    for the feed forward and back propagation methods of the `NeuralNetwork` class. Consecutive `ConnectedSegment` instances
     have overlapping `front` and `back` layers (i.e they are the same `ConnectedLayer` instance). This architecture
     allows for easy access to either preceding or following layers when making calculations and allows the `NeSegment`
     class to contain simplified logic feed forward and back propagation applications.
@@ -321,16 +340,16 @@ class NetSegment(object):
     Parameters
     ----------
     input_layer : :obj:`InputLayer` or :obj:`ConnectedLayer`
-        The first layer in the `NetSegment` instance.
+        The first layer in the `ConnectedSegment` instance.
     output_layer : `ConnectedLayer`
-        The last layer in the `NetSegment` instance.
+        The last layer in the `ConnectedSegment` instance.
 
     Attributes
     ----------
     front : :obj:`InputLayer` or :obj:`ConnectedLayer`
-        The first layer in the `NetSegment` instance.
+        The first layer in the `ConnectedSegment` instance.
     back : `ConnectedLayer`
-        The last layer in the `NetSegment` instance.
+        The last layer in the `ConnectedSegment` instance.
     weights : `ndarray`
         Weights of connections between front and back layers.
     shape : tuple
@@ -367,8 +386,9 @@ class NetSegment(object):
     def __init__(self, input_layer, output_layer):
         self.front = input_layer
         self.back = output_layer
-        self.weights = np.random.randn(output_layer.size, input_layer.size) * np.sqrt(1 / input_layer.size)
-        self.shape = self.weights.shape
+        self.shape = None
+        self.weights = None
+        self._create_weights()
         self.w_updates = None
         self.prev_w_updates = 0
         self.w_batch = None
@@ -376,6 +396,14 @@ class NetSegment(object):
         self.prev_b_updates = 0
         self.b_batch = None
         self.forward_passes = 0
+        self.weight_hist = []
+
+    def _create_weights(self):
+        if type(self.front) in [InputLayer, ConnectedLayer]:
+            self.weights = np.random.randn(self.back.size, self.front.size) * np.sqrt(1 / self.front.size)
+        else:
+            self.weights = np.random.randn(self.back.size, self.front.output_size) * np.sqrt(1 / self.front.output_size)
+        self.shape = self.weights.shape
 
     @property
     def weights(self):
@@ -393,12 +421,15 @@ class NetSegment(object):
 
     @weights.setter
     def weights(self, weights):
-        try:
-            if weights.shape != self.shape:
-                raise ValueError(f"Updated weights shape, {weights.shape}, != initial weights shape {self.shape}")
-            else:
+        if self.shape is not None:
+            try:
+                if weights.shape != self.shape:
+                    raise ValueError(f"Updated weights shape, {weights.shape}, != initial weights shape {self.shape}")
+                else:
+                    self.__weights = weights
+            except AttributeError:
                 self.__weights = weights
-        except AttributeError:
+        else:
             self.__weights = weights
 
     @property
@@ -426,7 +457,7 @@ class NetSegment(object):
 
     @property
     def b_updates(self):
-        """Array container for `NetSegment` back layer's bias updates.
+        """Array container for `ConnectedSegment` back layer's bias updates.
 
         Setter method contains logic to ensure dimensional consistency with back layer's bias array.
 
@@ -441,22 +472,20 @@ class NetSegment(object):
     @b_updates.setter
     def b_updates(self, b_updates):
         try:
-            assert b_updates.shape == self.back.shape, f"Bias updates shape, {b_updates.shape}, != initial bias shape {self.back.shape}"
+            assert b_updates.shape == self.back.shape, f"Bias updates shape, {b_updates.shape}, != initial shape {self.back.shape}"
             self.__b_updates = b_updates
         except AttributeError:
             self.__b_updates = None
 
-    def forward_pass(self, activation=''):
+    def forward_pass(self):
         """Fundamental logic to calculate a forward pass between two layers in a `NeuralNetwork` instance.
 
-        Parameters
-        ----------
-        activation : str
-            Keyword conveying type of activation function to use.
-
         """
-        self.back.z_vals = self.weights @ self.front.a_vals + self.back.biases
-        self.back.a_vals = self.activation(self.back.z_vals, func=activation)
+        if type(self.front) in [InputLayer, ConnectedLayer]:
+            self.back.raw_vals = self.weights @ self.front.act_vals + self.back.biases
+        else:
+            self.back.raw_vals = self.weights @ self.front.raveled_output + self.back.biases
+
         self.forward_passes += 1
 
     def back_propagate(self, delta):
@@ -468,18 +497,19 @@ class NetSegment(object):
             Array containing necessary computations from earlier portions of back propagation.
 
         """
-        self.w_updates = delta @ self.front.a_vals.T
+        if type(self.front) in [InputLayer, ConnectedLayer]:
+            self.w_updates = delta @ self.front.act_vals.T
+        else:
+            self.w_updates = delta @ self.front.raveled_output.T
         self.b_updates = delta
 
-    def setup_next_delta(self, delta, activation=''):
+    def setup_next_delta(self, delta):
         """Logic to calculate new deltas for each layer in back propagation calculation.
 
         Parameters
         ----------
         delta : :obj:`ndarray`
             Array containing necessary computations from earlier portions of back propagation.
-        activation
-            Keyword conveying type of activation function to use.
 
         Returns
         -------
@@ -489,15 +519,22 @@ class NetSegment(object):
             Delta array to use for next layer in back propagation computation.
 
         """
-        try:
-            return (self.weights.T @ delta) * self.activation(self.front.z_vals, func=activation, derivative=True)
-        # If self.front is an InputLayer, i.e. we've backpropagated to the intial layer, there will be an AttributeError
-        # becuase InputLayers do not have z_vals. Catch this error and pass because backproagation is complete
-        except AttributeError:
+        # If self.front is an InputLayer, i.e. we've backpropagated to the initial layer, there will be an
+        # AttributeError because InputLayers do not have `raw_vals`. Catch this error and pass because backpropagation
+        # is complete.
+        if type(self.front) is InputLayer:
             return None
+        elif type(self.front) is ConnectedLayer:
+            return (self.weights.T @ delta) * activation(self.front.raw_vals, func=self.front.a_func, derivative=True)
+        else:
+            try:
+                activated = activation(self.front.raw_output, func=self.front.a_func, derivative=True)
+                return (self.weights.T @ delta).reshape(*self.front.shape) * activated
+            except AttributeError:
+                return (self.weights.T @ delta).reshape(*self.front.shape)
 
     def update_weights(self, l_rate, m_factor, updater='', batch_size=50, momentum=True):
-        """Function to update `NetSegment` instance's weights and biases based on user input.
+        """Function to update `ConnectedSegment` instance's weights and biases based on user input.
 
         Parameters
         ----------
@@ -518,6 +555,7 @@ class NetSegment(object):
             If `updater` is unsupported.
 
         """
+        self.weight_hist.append(self.weights.max())
 
         if updater == 'sgd':
 
@@ -558,47 +596,3 @@ class NetSegment(object):
         else:
 
             raise KeyError(f"Unrecognized updater: {updater}")
-
-    @staticmethod
-    def activation(val, func='', derivative=False):
-        """Primary function to handle neuron activations.
-
-        Parameters
-        ----------
-        val : :obj:`float`, :obj:`int`, :obj:`ndarray`
-            Inputted value.
-        func : str
-            Keyword conveying type of activation function to use.
-        derivative : bool
-            Whether or not to use derivative form of activation function.
-
-        Returns
-        -------
-        float
-            If `val` is `float` or `int`.
-        :obj:`ndarray:
-            If `val` is :obj:`ndarray`.
-
-        Raises
-        ------
-        KeyError
-            If `func` input is unsupported.
-
-        """
-
-        if func == 'sigmoid':
-            if derivative:
-                return (np.exp(-val)) / ((1 + np.exp(-val)) ** 2)
-            else:
-                return 1 / (1 + np.exp(-val))
-
-        elif func == 'relu':
-            if derivative:
-                return np.array([1.0 if i > 0.0 else 0.0 for i in val]).reshape(-1, 1)
-            else:
-                return np.array([max(0, i[0]) for i in val]).reshape(-1, 1)
-
-        else:
-            raise KeyError(f"Unrecognized activation function: {func}")
-
-

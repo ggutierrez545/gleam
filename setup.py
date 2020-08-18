@@ -4,7 +4,7 @@ with open("README.md", "r") as readme:
     long_description = readme.read()
 
 setuptools.setup(
-    name="ggutierrez545",
+    name="glearn",
     version="0.1",
     author="Guillermo Javier Gutierrez",
     author_email="guillo.j.gutierrez@gmail.com",

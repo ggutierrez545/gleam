@@ -1,1 +1,3 @@
-__path__ = __import__('pkgutil').extend_path(__path__, __name__)
+# Make subdirectories importable within package namespace
+from . import nerualnetworks
+from . import utils

@@ -1,1 +1,3 @@
-__path__ = __import__('pkgutil').extend_path(__path__, __name__)
+# Make primary neural nets available in this namespace
+from .nn import NeuralNetwork
+from .cnn import ConvolutionalNeuralNet

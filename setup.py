@@ -5,7 +5,7 @@ with open("README.md", "r") as readme:
 
 setuptools.setup(
     name="glearn",
-    version="0.1",
+    version="0.6",
     author="Guillermo Javier Gutierrez",
     author_email="guillo.j.gutierrez@gmail.com",
     description="An explanatory machine learning package.",

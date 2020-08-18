@@ -1,17 +1,17 @@
 import setuptools
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+with open("README.md", "r") as readme:
+    long_description = readme.read()
 
 setuptools.setup(
-    name="ggutierrez545,
+    name="ggutierrez545",
     version="0.1",
     author="Guillermo Javier Gutierrez",
     author_email="guillo.j.gutierrez@gmail.com",
     description="An explanatory machine learning package.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ggutierrez545/glearn,
+    url="https://github.com/ggutierrez545/glearn",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

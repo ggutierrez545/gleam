@@ -1,5 +1,6 @@
 import numpy as np
 from ..utils.activation import activation, loss
+from ..config import _set_gpu_compiler, gpu_bool
 
 
 class NeuralNetwork(object):
@@ -186,6 +187,10 @@ class NeuralNetwork(object):
             segment.back_propagate(delta)
             delta = segment.setup_next_delta(delta)
             segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=momentum)
+
+    @staticmethod
+    def attach_gpu_compiler():
+        _set_gpu_compiler()
 
 
 class InputLayer(object):

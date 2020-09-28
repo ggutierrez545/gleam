@@ -1,5 +1,7 @@
 import numpy as np
 import copy
+from ..config import gpu_bool
+import glearn.utils.arithmetic as arith
 
 
 def activation(values, func='', derivative=False):
@@ -28,27 +30,29 @@ def activation(values, func='', derivative=False):
 
     """
     val = copy.deepcopy(values)
-    val[val < 1e-8] = 0
     if func == 'sigmoid':
+        exps = arith.exp(-val, gpu_bool)
         if derivative:
-            return (np.exp(-val)) / ((1 + np.exp(-val)) ** 2)
+            denom = arith.add(1, arith.power(exps, 2, gpu_bool), gpu_bool)
+            return arith.div(exps, denom, gpu_bool)
         else:
-            return 1 / (1 + np.exp(-val))
+            return arith.div(1, arith.add(1, exps, gpu_bool), gpu_bool)
 
     elif func == 'relu':
         if derivative:
-            val[val <= 0] = 0
-            val[val > 0] = 1
+            val = arith.lst_arr_set(val, 0, 0)
+            val = arith.grt_arr_set(val, 0, 1)
         else:
-            val[val < 0] = 0
+            val = arith.lst_arr_set(val, 0, 0)
         return val
 
     elif func == 'softmax':
         # d is meant for numerical stability, keeps vals in val close
         # to zero.
-        d = -np.max(val)
-        exp_sum = np.sum(np.exp(val + d), axis=0)
-        softmax = np.exp(val + d) / exp_sum
+        d = -arith.max_val(val)
+        exps = arith.exp(arith.add(d, val))
+        exp_sum = arith.z_sum(exps)
+        softmax = arith.div(exps, exp_sum)
         if derivative:
             jacobian = softmax @ -softmax.reshape(1, -1)
             diag = softmax - softmax**2

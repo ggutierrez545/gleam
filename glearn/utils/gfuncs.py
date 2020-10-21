@@ -7,6 +7,12 @@ kwargs = {'target': 'gpu', 'nopython': True, 'parallel': True}
 
 @gpu_conditional
 @jit(**kwargs)
+def mult(*args):
+    return np.prod(args)
+
+
+@gpu_conditional
+@jit(**kwargs)
 def dot(*args):
     return np.matmul(*args[:2])
 
@@ -103,3 +109,10 @@ def fill_diagonal(array, diag):
 @jit(**kwargs)
 def argmax(array):
     return np.argmax(array)
+
+
+@gpu_conditional
+@jit(**kwargs)
+def transpose(array):
+    return array.T
+

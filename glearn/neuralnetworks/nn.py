@@ -587,7 +587,6 @@ class ConnectedSegment(object):
             else:
                 w_update = gf.add(gf.mult(l_rate, gf.div(self.w_batch, batch_size)), gf.mult(m_factor, self.prev_w_updates))
                 b_update = gf.add(gf.mult(l_rate, gf.div(self.b_batch, batch_size)), gf.mult(m_factor, self.prev_b_updates))
-
                 self.weights = gf.sub(self.weights, w_update)
                 self.back.biases = gf.sub(self.back.biases, b_update)
 

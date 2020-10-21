@@ -1,6 +1,7 @@
 import numpy as np
 from ..utils.activation import activation, loss
 from ..config import _set_gpu_compiler, gpu_bool
+import glearn.utils.gfuncs as gf
 
 
 class NeuralNetwork(object):
@@ -181,9 +182,9 @@ class NeuralNetwork(object):
             if delta is None:
                 activated = activation(segment.back.raw_vals, func=segment.back.a_func, derivative=True)
                 if self.loss_func == 'cross-entropy':
-                    delta = (cost.T @ activated).reshape(-1, 1)
+                    delta = gf.reshape(gf.dot(gf.transpose(cost), activated), (-1, 1))
                 else:
-                    delta = cost * activated
+                    delta = gf.mult(cost, activated)
             segment.back_propagate(delta)
             delta = segment.setup_next_delta(delta)
             segment.update_weights(self.l_rate, self.m_factor, updater=updater, batch_size=batch_size, momentum=momentum)
@@ -254,7 +255,7 @@ class InputLayer(object):
         try:
             assert np.prod(act_vals.shape) == self.size, f"New layer size, {len(act_vals)}, != initial layer size {self.size}"
             if self._parent is NeuralNetwork:
-                self.__act_vals = act_vals.reshape(-1, 1)
+                self.__act_vals = gf.reshape(act_vals, (-1, 1))
             else:
                 self.__act_vals = act_vals
         except AttributeError:
@@ -286,7 +287,7 @@ class ConnectedLayer(InputLayer):
     def __init__(self, size, activation='', parent=''):
         super().__init__(size, parent=parent)
         self.raw_vals = None
-        self.biases = np.zeros((size, 1)) + 0.01
+        self.biases = gf.add(gf.zeros((size, 1)), 0.01)
         self.a_func = activation
 
     @property
@@ -401,13 +402,12 @@ class ConnectedSegment(object):
         self.prev_b_updates = 0
         self.b_batch = None
         self.forward_passes = 0
-        self.weight_hist = []
 
     def _create_weights(self):
         if type(self.front) in [InputLayer, ConnectedLayer]:
-            self.weights = np.random.randn(self.back.size, self.front.size) * np.sqrt(1 / self.front.size)
+            self.weights = gf.mult(np.random.randn(self.back.size, self.front.size), np.sqrt(1 / self.front.size))
         else:
-            self.weights = np.random.randn(self.back.size, self.front.output_size) * np.sqrt(1 / self.front.output_size)
+            self.weights = gf.mult(np.random.randn(self.back.size, self.front.output_size), np.sqrt(1 / self.front.output_size))
         self.shape = self.weights.shape
 
     @property
@@ -487,9 +487,9 @@ class ConnectedSegment(object):
 
         """
         if type(self.front) in [InputLayer, ConnectedLayer]:
-            self.back.raw_vals = self.weights @ self.front.act_vals + self.back.biases
+            self.back.raw_vals = gf.add(gf.dot(self.weights, self.front.act_vals), self.back.biases)
         else:
-            self.back.raw_vals = self.weights @ self.front.raveled_output + self.back.biases
+            self.back.raw_vals = gf.add(gf.dot(self.weights, self.front.raveled_output), self.back.biases)
 
         self.forward_passes += 1
 
@@ -503,9 +503,9 @@ class ConnectedSegment(object):
 
         """
         if type(self.front) in [InputLayer, ConnectedLayer]:
-            self.w_updates = delta @ self.front.act_vals.T
+            self.w_updates = gf.dot(delta, gf.transpose(self.front.act_vals))
         else:
-            self.w_updates = delta @ self.front.raveled_output.T
+            self.w_updates = gf.dot(delta, gf.transpose(self.front.raveled_output))
         self.b_updates = delta
 
     def setup_next_delta(self, delta):
@@ -530,13 +530,15 @@ class ConnectedSegment(object):
         if type(self.front) is InputLayer:
             return None
         elif type(self.front) is ConnectedLayer:
-            return (self.weights.T @ delta) * activation(self.front.raw_vals, func=self.front.a_func, derivative=True)
+            lp = gf.dot(gf.transpose(self.weights), delta)
+            return gf.mult(lp, activation(self.front.raw_vals, func=self.front.a_func, derivative=True))
         else:
             try:
                 activated = activation(self.front.raw_output, func=self.front.a_func, derivative=True)
-                return (self.weights.T @ delta).reshape(*self.front.shape) * activated
+                lp = gf.reshape(gf.dot(gf.transpose(self.weights), delta), self.front.shape)
+                return gf.mult(lp, activated)
             except AttributeError:
-                return (self.weights.T @ delta).reshape(*self.front.shape)
+                return gf.reshape(gf.dot(gf.transpose(self.weights), delta), self.front.shape)
 
     def update_weights(self, l_rate, m_factor, updater='', batch_size=50, momentum=True):
         """Function to update `ConnectedSegment` instance's weights and biases based on user input.
@@ -560,40 +562,38 @@ class ConnectedSegment(object):
             If `updater` is unsupported.
 
         """
-        self.weight_hist.append(self.weights.max())
-
         if updater == 'sgd':
 
-            w_update = (l_rate * self.w_updates) + (m_factor * self.prev_w_updates)
-            b_update = (l_rate * self.b_updates) + (m_factor * self.prev_b_updates)
+            w_update = gf.add(gf.mult(l_rate, self.w_updates), gf.mult(m_factor, self.prev_w_updates))
+            b_update = gf.add(gf.mult(l_rate, self.b_updates), gf.mult(m_factor, self.prev_b_updates))
 
-            self.weights -= w_update
-            self.back.biases -= b_update
+            self.weights = gf.sub(self.weights, w_update)
+            self.back.biases = gf.sub(self.back.biases, b_update)
 
             if momentum:
-                self.prev_w_updates = -w_update
-                self.prev_b_updates = -b_update
+                self.prev_w_updates = gf.sub(self.prev_w_updates, w_update)
+                self.prev_b_updates = gf.sub(self.prev_b_updates, b_update)
 
         elif updater == 'mini_batch':
 
             if self.forward_passes % batch_size != 0:
                 try:
-                    self.w_batch += self.w_updates
-                    self.b_batch += self.b_updates
+                    self.w_batch = gf.add(self.w_batch, self.w_updates)
+                    self.b_batch = gf.add(self.b_batch, self.b_updates)
                 except TypeError:
                     self.w_batch = self.w_updates
                     self.b_batch = self.b_updates
 
             else:
-                w_update = (l_rate * (self.w_batch/batch_size)) + (m_factor * self.prev_w_updates)
-                b_update = (l_rate * (self.b_batch/batch_size)) + (m_factor * self.prev_b_updates)
+                w_update = gf.add(gf.mult(l_rate, gf.div(self.w_batch, batch_size)), gf.mult(m_factor, self.prev_w_updates))
+                b_update = gf.add(gf.mult(l_rate, gf.div(self.b_batch, batch_size)), gf.mult(m_factor, self.prev_b_updates))
 
-                self.weights -= w_update
-                self.back.biases -= b_update
+                self.weights = gf.sub(self.weights, w_update)
+                self.back.biases = gf.sub(self.back.biases, b_update)
 
                 if momentum:
-                    self.prev_w_updates -= w_update
-                    self.prev_b_updates -= b_update
+                    self.prev_w_updates = gf.sub(self.prev_w_updates, w_update)
+                    self.prev_b_updates = gf.sub(self.prev_b_updates, b_update)
 
                 self.w_batch = self.w_updates
                 self.b_batch = self.b_updates

@@ -116,3 +116,8 @@ def argmax(array):
 def transpose(array):
     return array.T
 
+
+@gpu_conditional
+@jit(**kwargs)
+def zeros(size):
+    return np.zeros(size)

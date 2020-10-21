@@ -1,6 +1,6 @@
 import numpy as np
 from glearn.utils.activation import activation, loss
-from glearn.nerualnetworks.nn import NeuralNetwork, InputLayer, ConnectedLayer, ConnectedSegment
+from glearn.neuralnetworks.nn import NeuralNetwork, InputLayer, ConnectedLayer, ConnectedSegment
 
 
 class ConvolutionalNeuralNet(NeuralNetwork):

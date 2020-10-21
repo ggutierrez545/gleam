@@ -1,7 +1,6 @@
-import numpy as np
 import copy
+import glearn.utils.gfuncs as gf
 from ..config import gpu_bool
-import glearn.utils.arithmetic as arith
 
 
 def activation(values, func='', derivative=False):
@@ -31,32 +30,32 @@ def activation(values, func='', derivative=False):
     """
     val = copy.deepcopy(values)
     if func == 'sigmoid':
-        exps = arith.exp(-val, gpu_bool)
+        exps = gf.exp(-val, gpu_bool)
         if derivative:
-            denom = arith.add(1, arith.power(exps, 2, gpu_bool), gpu_bool)
-            return arith.div(exps, denom, gpu_bool)
+            denom = gf.add(1, gf.power(exps, 2, gpu_bool), gpu_bool)
+            return gf.div(exps, denom, gpu_bool)
         else:
-            return arith.div(1, arith.add(1, exps, gpu_bool), gpu_bool)
+            return gf.div(1, gf.add(1, exps, gpu_bool), gpu_bool)
 
     elif func == 'relu':
         if derivative:
-            val = arith.lst_arr_set(val, 0, 0)
-            val = arith.grt_arr_set(val, 0, 1)
+            val = gf.lst_arr_set(val, 0, 0)
+            val = gf.grt_arr_set(val, 0, 1)
         else:
-            val = arith.lst_arr_set(val, 0, 0)
+            val = gf.lst_arr_set(val, 0, 0)
         return val
 
     elif func == 'softmax':
         # d is meant for numerical stability, keeps vals in val close
         # to zero.
-        d = -arith.max_val(val)
-        exps = arith.exp(arith.add(d, val))
-        exp_sum = arith.z_sum(exps)
-        softmax = arith.div(exps, exp_sum)
+        d = -gf.max_val(val)
+        exps = gf.exp(gf.add(d, val))
+        exp_sum = gf.z_sum(exps)
+        softmax = gf.div(exps, exp_sum)
         if derivative:
-            jacobian = softmax @ -softmax.reshape(1, -1)
-            diag = softmax - softmax**2
-            np.fill_diagonal(jacobian, diag)
+            jacobian = gf.dot(softmax, -gf.reshape(softmax, (1, -1)))
+            diag = gf.sub(softmax, gf.power(softmax, 2))
+            jacobian = gf.fill_diagonal(jacobian, diag)
             return jacobian
         else:
             return softmax
@@ -67,12 +66,10 @@ def activation(values, func='', derivative=False):
 
 def loss(prediction, truth, loss_type=''):
 
-    true = np.argmax(truth)
-
     if loss_type == 'mean-squared':
-        return prediction - truth
+        return gf.sub(prediction, truth)
 
     elif loss_type == 'cross-entropy':
-        return -truth / prediction
+        return gf.div(-truth, prediction)
 
 

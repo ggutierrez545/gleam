@@ -55,7 +55,7 @@ def activation(values, func='', derivative=False):
         if derivative:
             jacobian = gf.dot(softmax, -gf.reshape(softmax, (1, -1)))
             diag = gf.sub(softmax, gf.power(softmax, 2))
-            jacobian = gf.fill_diagonal(jacobian, diag)
+            gf.fill_diagonal(jacobian, diag)
             return jacobian
         else:
             return softmax

@@ -8,6 +8,6 @@ def gpu_conditional(func):
         if gpu_bool:
             return func(*args)
         else:
-            return func.__wrapped__(*args)
+            return func.py_func(*args)
     return cond_wrapper
 

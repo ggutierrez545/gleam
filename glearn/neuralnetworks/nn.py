@@ -1,6 +1,6 @@
 import numpy as np
 from ..utils.activation import activation, loss
-from ..config import _set_gpu_compiler, gpu_bool
+from ..config import _set_gpu_compiler
 import glearn.utils.gfuncs as gf
 
 
